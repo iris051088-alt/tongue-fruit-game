@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>舌頭控制水果遊戲</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<style>
+  body { margin:0; overflow:hidden; background:#f0f0f0; }
+  canvas { display:block; margin:auto; }
+  #score { position:absolute; top:10px; left:10px; font-size:24px; color:#333; }
+</style>
+</head>
+<body>
+<div id="score">分數: 0</div>
+<canvas id="gameCanvas"></canvas>
+<audio id="bgMusic" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" loop autoplay></audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+const player = { x: canvas.width/2, y: canvas.height/2, r: 20 };
+const fruits = [];
+
+function spawnFruit() {
+    const x = Math.random() * (canvas.width - 40) + 20;
+    const y = Math.random() * (canvas.height - 40) + 20;
+    fruits.push({x,y,r:15});
+}
+setInterval(spawnFruit,2000);
+
+const video = document.createElement('video');
+video.autoplay = true;
+navigator.mediaDevices.getUserMedia({ video:true })
+    .then(stream => video.srcObject = stream)
+    .catch(err => alert("請允許相機"));
+
+async function startGame() {
+    await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadummycdn.com/models');
+    await faceapi.nets.faceLandmark68TinyNet.loadFromUri('https://justadummycdn.com/models');
+    requestAnimationFrame(update);
+}
+
+async function update() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // 畫水果
+    fruits.forEach(f=>{
+        ctx.fillStyle='orange';
+        ctx.beginPath();
+        ctx.arc(f.x,f.y,f.r,0,2*Math.PI);
+        ctx.fill();
+    });
+
+    // 畫紅點
+    ctx.fillStyle='red';
+    ctx.beginPath();
+    ctx.arc(player.x,player.y,player.r,0,2*Math.PI);
+    ctx.fill();
+
+    // 嘗試偵測嘴巴
+    const res = await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions())
+                                  .withFaceLandmarks(true);
+    if(res){
+        const mouth = res.landmarks.getMouth();
+        const mouthHeight = Math.abs(mouth[13].y - mouth[19].y);
+        if(mouthHeight > 20) player.y += 5; // 嘴巴張開，紅點往下
+        else player.y -= 3;                  // 嘴巴閉合，紅點往上
+        if(player.y < 0) player.y = 0;
+        if(player.y > canvas.height) player.y = canvas.height;
+
+        // 碰撞水果
+        for(let i=fruits.length-1;i>=0;i--){
+            const f = fruits[i];
+            const dx = player.x - f.x;
+            const dy = player.y - f.y;
+            if(Math.sqrt(dx*dx + dy*dy) < player.r + f.r){
+                fruits.splice(i,1);
+                score++;
+                document.getElementById('score').innerText = '分數: ' + score;
+            }
+        }
+    }
+
+    requestAnimationFrame(update);
+}
+
+startGame();
+</script>
+</body>
+</html>
